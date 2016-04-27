@@ -205,24 +205,28 @@ module Scientist::Experiment
       @_scientist_before_run.call
     end
 
-    observations = behaviors.keys.shuffle.map do |key|
-      block = behaviors[key]
-      Scientist::Observation.new(key, self, &block)
-    end
+    control = Scientist::Observation.new(name, self, &block)
 
-    control = observations.detect { |o| o.name == name }
+    fork {
+      observations = behaviors.keys.shuffle.map do |key|
+        block = behaviors[key]
+        Scientist::Observation.new(key, self, &block)
+      end
 
-    result = Scientist::Result.new self, observations, control
+      result = Scientist::Result.new self, observations, control
 
-    begin
-      publish(result)
-    rescue StandardError => ex
-      raised :publish, ex
-    end
+      begin
+        publish(result)
+      rescue StandardError => _ex
+        raised :publish, ex
+      end
 
-    if raise_on_mismatches? && result.mismatched?
-      raise MismatchError.new(self.name, result)
-    end
+      if raise_on_mismatches? && result.mismatched?
+        raise MismatchError.new(self.name, result)
+      end
+
+      exit
+    }
 
     if control.raised?
       raise control.exception
